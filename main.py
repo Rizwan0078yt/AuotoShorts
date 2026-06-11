@@ -2,11 +2,26 @@ import os
 import asyncio
 import requests
 import json
+import random
 import edge_tts
 from groq import Groq
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
+
+# Your Google Drive video IDs
+VIDEO_IDS = [
+    "1WqxvNGgmqfcGpRzGsmezF1TzxV6sxrGQ/view?usp=drive_link",
+    "1r4oqa2lu4ILR-imTK4K9M4CF__0V-EFO/view?usp=drive_link",
+]
+
+def download_video(file_id, output="gameplay.mp4"):
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    response = requests.get(url, stream=True)
+    with open(output, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print(f"Video downloaded!")
 
 def get_trending_topic():
     topics = [
@@ -16,7 +31,6 @@ def get_trending_topic():
         "the most bizarre unsolved mystery in history",
         "a survival story that seems impossible",
     ]
-    import random
     return random.choice(topics)
 
 def generate_script(topic):
@@ -25,7 +39,7 @@ def generate_script(topic):
         messages=[{
             "role": "user",
             "content": f"""Write a 55-second YouTube Shorts script about: {topic}
-            
+
 Rules:
 - Start with a shocking hook
 - Keep sentences short
@@ -45,7 +59,7 @@ async def text_to_speech(script, filename="voice.mp3"):
     voice = "en-US-ChristopherNeural"
     communicate = edge_tts.Communicate(script, voice)
     await communicate.save(filename)
-    print(f"Voice saved: {filename}")
+    print(f"Voice saved!")
 
 def main():
     print("🔥 Getting trending topic...")
@@ -59,7 +73,11 @@ def main():
     print("🎙️ Creating voiceover...")
     asyncio.run(text_to_speech(data["script"]))
 
-    print("✅ Done! Script and voice ready.")
+    print("🎮 Downloading gameplay video...")
+    video_id = random.choice(VIDEO_IDS)
+    download_video(video_id)
+
+    print("✅ Done!")
     print(f"Title: {data['title']}")
     print(f"Description: {data['description']}")
     print(f"Tags: {data['tags']}")
