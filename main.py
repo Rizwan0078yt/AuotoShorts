@@ -1,7 +1,6 @@
 import os
 import asyncio
 import requests
-import gdown
 import json
 import random
 import subprocess
@@ -11,13 +10,13 @@ from groq import Groq
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 
-VIDEO_IDS = [
-    "1WqxvNGgmqfcGpRzGsmezF1TzxV6sxrGQ/view?usp=drive_link",
-    "1r4oqa2lu4ILR-imTK4K9M4CF__0V-EFO/view?usp=drive_link",
+VIDEO_URLS = [
+    "https://www.dropbox.com/scl/fi/efsgvqdzsxhmzrfklgg6d/Minecraft-Gameplay-Free-To-Use-Gameplay_720p.mp4?rlkey=ixo2sn2z8yshe48m1eo0b8mfp&st=eoa1o9rj&dl=1",
+    "https://www.dropbox.com/scl/fi/438139ar9rjxnxi5by0z0/Wreckfest-2-Gameplay-Free-To-Use_720p-1.mp4?rlkey=igu67c3bmc94j4hlgatkg27ox&st=18ar145k&dl=1",
 ]
 
-def download_video(file_id, output="gameplay.mp4"):
-    url = f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t"
+def download_video(output="gameplay.mp4"):
+    url = random.choice(VIDEO_URLS)
     response = requests.get(url, stream=True)
     with open(output, "wb") as f:
         for chunk in response.iter_content(chunk_size=32768):
@@ -93,8 +92,7 @@ def main():
     asyncio.run(text_to_speech(data["script"]))
 
     print("🎮 Downloading gameplay...")
-    video_id = random.choice(VIDEO_IDS)
-    download_video(video_id)
+    download_video()
 
     print("🎬 Building video...")
     build_video()
