@@ -21,7 +21,7 @@ def get_trending_topic():
 
 def generate_script(topic):
     response = client.chat.completions.create(
-        model="llama3-70b-8192",
+        model="llama-3.3-70b-versatile",
         messages=[{
             "role": "user",
             "content": f"""Write a 55-second YouTube Shorts script about: {topic}
