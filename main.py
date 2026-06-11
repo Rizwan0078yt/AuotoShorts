@@ -4,16 +4,26 @@ import requests
 import json
 import random
 import subprocess
+import pickle
+import base64
 import edge_tts
 from groq import Groq
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 
 VIDEO_URLS = [
-    "https://www.dropbox.com/scl/fi/efsgvqdzsxhmzrfklgg6d/Minecraft-Gameplay-Free-To-Use-Gameplay_720p.mp4?rlkey=ixo2sn2z8yshe48m1eo0b8mfp&st=eoa1o9rj&dl=1",
-    "https://www.dropbox.com/scl/fi/438139ar9rjxnxi5by0z0/Wreckfest-2-Gameplay-Free-To-Use_720p-1.mp4?rlkey=igu67c3bmc94j4hlgatkg27ox&st=18ar145k&dl=1",
+    "https://www.dropbox.com/scl/fi/efsgvqdzsxhmzrfklgg6d/Minecraft-Gameplay-Free-To-Use-Gameplay_720p.mp4?rlkey=ixo2sn2z8yshe48m1eo0b8mfp&st=p8r7eu0u&dl=1",
+    "https://www.dropbox.com/scl/fi/438139ar9rjxnxi5by0z0/Wreckfest-2-Gameplay-Free-To-Use_720p-1.mp4?rlkey=igu67c3bmc94j4hlgatkg27ox&st=1nep6py6&dl=1",
 ]
+
+def get_youtube_client():
+    token_b64 = os.environ.get("YOUTUBE_TOKEN")
+    token_data = base64.b64decode(token_b64)
+    creds = pickle.loads(token_data)
+    return build("youtube", "v3", credentials=creds)
 
 def download_video(output="gameplay.mp4"):
     url = random.choice(VIDEO_URLS)
@@ -79,6 +89,28 @@ def build_video():
     subprocess.run(cmd, check=True)
     print("Video built!")
 
+def upload_to_youtube(youtube, title, description, tags):
+    body = {
+        "snippet": {
+            "title": title,
+            "description": description + "\n\n#Shorts",
+            "tags": tags + ["Shorts", "viral"],
+            "categoryId": "24"
+        },
+        "status": {
+            "privacyStatus": "public"
+        }
+    }
+    media = MediaFileUpload("final_video.mp4", chunksize=-1, resumable=True)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media
+    )
+    response = request.execute()
+    print(f"✅ Uploaded! Video ID: {response['id']}")
+    return response['id']
+
 def main():
     print("🔥 Getting trending topic...")
     topic = get_trending_topic()
@@ -97,10 +129,15 @@ def main():
     print("🎬 Building video...")
     build_video()
 
-    print("✅ Video ready!")
-    print(f"Title: {data['title']}")
-    print(f"Description: {data['description']}")
-    print(f"Tags: {data['tags']}")
+    print("📤 Uploading to YouTube...")
+    youtube = get_youtube_client()
+    video_id = upload_to_youtube(
+        youtube,
+        data["title"],
+        data["description"],
+        data["tags"]
+    )
+    print(f"🎉 Live at: https://youtube.com/shorts/{video_id}")
 
 if __name__ == "__main__":
     main()
