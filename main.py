@@ -16,11 +16,20 @@ VIDEO_IDS = [
 ]
 
 def download_video(file_id, output="gameplay.mp4"):
+    session = requests.Session()
     url = f"https://drive.google.com/uc?export=download&id={file_id}"
-    response = requests.get(url, stream=True)
+    response = session.get(url, stream=True)
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            token = value
+    if token:
+        url = url + f"&confirm={token}"
+        response = session.get(url, stream=True)
     with open(output, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
     print("Video downloaded!")
 
 def get_trending_topic():
