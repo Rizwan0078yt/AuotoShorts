@@ -17,8 +17,12 @@ VIDEO_IDS = [
 ]
 
 def download_video(file_id, output="gameplay.mp4"):
-    url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, output, quiet=False)
+    url = f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t"
+    response = requests.get(url, stream=True)
+    with open(output, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
     print("Video downloaded!")
 
 def get_trending_topic():
