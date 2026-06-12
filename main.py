@@ -51,7 +51,6 @@ def generate_script(topic):
 Rules:
 - Start with a shocking hook
 - Keep sentences short
-- End with a cliffhanger
 - Also give me a title, description and 10 tags
 
 Format as JSON:
@@ -63,14 +62,34 @@ Return ONLY the JSON, nothing else."""
     text = response.choices[0].message.content
     return json.loads(text)
 
-async def text_to_speech(script, filename="voice.mp3"):
+def format_time(seconds):
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
+async def create_voice_and_subs(script):
     voice = "en-US-AriaNeural"
     communicate = edge_tts.Communicate(script, voice)
-    await communicate.save(filename)
+    words = []
+    async for chunk in communicate.stream():
+        if chunk["type"] == "WordBoundary":
+            start = chunk["offset"] / 10000000
+            dur = chunk["duration"] / 10000000
+            end = start + dur
+            words.append((start, end, chunk["text"]))
+    with open("subs.srt", "w", encoding="utf-8") as f:
+        for i, (start, end, word) in enumerate(words, 1):
+            f.write(f"{i}\n{format_time(start)} --> {format_time(end)}\n{word}\n\n")
+    print(f"SRT created with {len(words)} words!")
+    communicate2 = edge_tts.Communicate(script, voice)
+    await communicate2.save("voice.mp3")
     print("Voice saved!")
 
 def build_video():
-    cmd = [
+    # Step 1 — merge gameplay + voice
+    cmd1 = [
         "ffmpeg", "-y",
         "-stream_loop", "-1",
         "-i", "gameplay.mp4",
@@ -82,10 +101,21 @@ def build_video():
         "-c:a", "aac",
         "-shortest",
         "-t", "60",
+        "temp_video.mp4"
+    ]
+    subprocess.run(cmd1, check=True)
+    print("Base video built!")
+
+    # Step 2 — burn subtitles
+    cmd2 = [
+        "ffmpeg", "-y",
+        "-i", "temp_video.mp4",
+        "-vf", "subtitles=subs.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFF00,OutlineColour=&H00000000,Bold=1,Outline=3,Alignment=2,MarginV=150'",
+        "-c:a", "copy",
         "final_video.mp4"
     ]
-    subprocess.run(cmd, check=True)
-    print("Video built!")
+    subprocess.run(cmd2, check=True)
+    print("Subtitles burned!")
 
 def upload_to_youtube(youtube, title, description, tags):
     body = {
@@ -118,8 +148,8 @@ def main():
     data = generate_script(topic)
     print(f"Title: {data['title']}")
 
-    print("🎙️ Creating voiceover...")
-    asyncio.run(text_to_speech(data["script"]))
+    print("🎙️ Creating voiceover and subtitles...")
+    asyncio.run(create_voice_and_subs(data["script"]))
 
     print("🎮 Downloading gameplay...")
     download_video()
