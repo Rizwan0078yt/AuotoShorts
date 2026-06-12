@@ -5,7 +5,6 @@ import json
 import random
 import subprocess
 import pickle
-import base64
 import edge_tts
 from groq import Groq
 from googleapiclient.discovery import build
@@ -20,12 +19,7 @@ VIDEO_URLS = [
 ]
 
 def get_youtube_client():
-    token_b64 = os.environ.get("YOUTUBE_TOKEN")
-    if not token_b64:
-        raise ValueError("YOUTUBE_TOKEN secret is empty!")
-    token_b64 = token_b64.strip()
-    token_data = base64.b64decode(token_b64)
-    creds = pickle.loads(token_data)
+    creds = pickle.load(open("token.pickle", "rb"))
     return build("youtube", "v3", credentials=creds)
 
 def download_video(output="gameplay.mp4"):
