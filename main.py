@@ -64,7 +64,7 @@ Return ONLY the JSON, nothing else."""
     return json.loads(text)
 
 async def text_to_speech(script, filename="voice.mp3"):
-    voice = "en-US-ChristopherNeural"
+    voice = "en-US-AriaNeural"
     communicate = edge_tts.Communicate(script, voice)
     await communicate.save(filename)
     print("Voice saved!")
