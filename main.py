@@ -18,14 +18,16 @@ VIDEO_URLS = [
     "https://www.dropbox.com/scl/fi/438139ar9rjxnxi5by0z0/Wreckfest-2-Gameplay-Free-To-Use_720p-1.mp4?rlkey=igu67c3bmc94j4hlgatkg27ox&st=1nep6py6&dl=1",
 ]
 
+WORK_DIR = "/home/runner/work/AuotoShorts/AuotoShorts"
+
 def get_youtube_client():
-    creds = pickle.load(open("token.pickle", "rb"))
+    creds = pickle.load(open(f"{WORK_DIR}/token.pickle", "rb"))
     return build("youtube", "v3", credentials=creds)
 
 def download_video(output="gameplay.mp4"):
     url = random.choice(VIDEO_URLS)
     response = requests.get(url, stream=True)
-    with open(output, "wb") as f:
+    with open(f"{WORK_DIR}/{output}", "wb") as f:
         for chunk in response.iter_content(chunk_size=32768):
             if chunk:
                 f.write(chunk)
@@ -51,6 +53,7 @@ def generate_script(topic):
 Rules:
 - Start with a shocking hook
 - Keep sentences short
+- End with a cliffhanger
 - Also give me a title, description and 10 tags
 
 Format as JSON:
@@ -79,21 +82,28 @@ async def create_voice_and_subs(script):
             dur = chunk["duration"] / 10000000
             end = start + dur
             words.append((start, end, chunk["text"]))
-    with open("subs.srt", "w", encoding="utf-8") as f:
+    srt_path = f"{WORK_DIR}/subs.srt"
+    with open(srt_path, "w", encoding="utf-8") as f:
         for i, (start, end, word) in enumerate(words, 1):
             f.write(f"{i}\n{format_time(start)} --> {format_time(end)}\n{word}\n\n")
-    print(f"SRT created with {len(words)} words!")
+    print(f"SRT created with {len(words)} words at {srt_path}")
     communicate2 = edge_tts.Communicate(script, voice)
-    await communicate2.save("voice.mp3")
+    await communicate2.save(f"{WORK_DIR}/voice.mp3")
     print("Voice saved!")
 
 def build_video():
+    gameplay = f"{WORK_DIR}/gameplay.mp4"
+    voice = f"{WORK_DIR}/voice.mp3"
+    subs = f"{WORK_DIR}/subs.srt"
+    temp = f"{WORK_DIR}/temp_video.mp4"
+    final = f"{WORK_DIR}/final_video.mp4"
+
     # Step 1 — merge gameplay + voice
     cmd1 = [
         "ffmpeg", "-y",
         "-stream_loop", "-1",
-        "-i", "gameplay.mp4",
-        "-i", "voice.mp3",
+        "-i", gameplay,
+        "-i", voice,
         "-map", "0:v",
         "-map", "1:a",
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
@@ -101,7 +111,7 @@ def build_video():
         "-c:a", "aac",
         "-shortest",
         "-t", "60",
-        "temp_video.mp4"
+        temp
     ]
     subprocess.run(cmd1, check=True)
     print("Base video built!")
@@ -109,15 +119,16 @@ def build_video():
     # Step 2 — burn subtitles
     cmd2 = [
         "ffmpeg", "-y",
-        "-i", "temp_video.mp4",
-        "-vf", "subtitles=subs.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFF00,OutlineColour=&H00000000,Bold=1,Outline=3,Alignment=2,MarginV=150'",
+        "-i", temp,
+        "-vf", f"subtitles={subs}:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFF00,OutlineColour=&H00000000,Bold=1,Outline=3,Alignment=2,MarginV=150'",
         "-c:a", "copy",
-        "final_video.mp4"
+        final
     ]
     subprocess.run(cmd2, check=True)
     print("Subtitles burned!")
 
 def upload_to_youtube(youtube, title, description, tags):
+    final = f"{WORK_DIR}/final_video.mp4"
     body = {
         "snippet": {
             "title": title,
@@ -129,7 +140,7 @@ def upload_to_youtube(youtube, title, description, tags):
             "privacyStatus": "public"
         }
     }
-    media = MediaFileUpload("final_video.mp4", chunksize=-1, resumable=True)
+    media = MediaFileUpload(final, chunksize=-1, resumable=True)
     request = youtube.videos().insert(
         part="snippet,status",
         body=body,
