@@ -63,11 +63,33 @@ Return ONLY the JSON, nothing else."""
     text = response.choices[0].message.content
     return json.loads(text)
 
-async def text_to_speech(script, filename="voice.mp3"):
+async def text_to_speech_with_timing(script, audio_file="voice.mp3", srt_file="subs.srt"):
     voice = "en-US-AriaNeural"
     communicate = edge_tts.Communicate(script, voice)
-    await communicate.save(filename)
-    print("Voice saved!")
+    words = []
+    with open(srt_file, "w") as srt:
+        idx = 1
+        async for chunk in communicate.stream():
+            if chunk["type"] == "WordBoundary":
+                start = chunk["offset"] / 10000000
+                dur = chunk["duration"] / 10000000
+                end = start + dur
+                word = chunk["text"]
+                words.append((start, end, word))
+                srt.write(f"{idx}\n")
+                srt.write(f"{format_time(start)} --> {format_time(end)}\n")
+                srt.write(f"{word}\n\n")
+                idx += 1
+    communicate2 = edge_tts.Communicate(script, voice)
+    await communicate2.save(audio_file)
+    print("Voice and subtitles saved!")
+
+def format_time(seconds):
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
 
 def build_video():
     cmd = [
@@ -77,7 +99,7 @@ def build_video():
         "-i", "voice.mp3",
         "-map", "0:v",
         "-map", "1:a",
-        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,subtitles=subs.srt:force_style='FontName=Arial,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,Bold=1,Outline=3,Shadow=1,Alignment=2,MarginV=120'",
         "-c:v", "libx264",
         "-c:a", "aac",
         "-shortest",
@@ -118,13 +140,13 @@ def main():
     data = generate_script(topic)
     print(f"Title: {data['title']}")
 
-    print("🎙️ Creating voiceover...")
-    asyncio.run(text_to_speech(data["script"]))
+    print("🎙️ Creating voiceover and subtitles...")
+    asyncio.run(text_to_speech_with_timing(data["script"]))
 
     print("🎮 Downloading gameplay...")
     download_video()
 
-    print("🎬 Building video...")
+    print("🎬 Building video with captions...")
     build_video()
 
     print("📤 Uploading to YouTube...")
