@@ -7,3 +7,4 @@ google-auth-oauthlib
 pytrends
 requests
 gdown
+pillow
