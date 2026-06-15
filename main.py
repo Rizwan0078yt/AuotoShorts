@@ -102,15 +102,20 @@ def build_video():
     ]
     subprocess.run(cmd1, check=True)
     print("Base video built!")
-    cmd2 = [
-        "ffmpeg", "-y",
-        "-i", "temp_video.mp4",
-        "-vf", "subtitles=subs.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFF00,OutlineColour=&H00000000,Bold=1,Outline=3,Alignment=2,MarginV=150'",
-        "-c:a", "copy",
-        "final_video.mp4"
-    ]
-    subprocess.run(cmd2, check=True)
-    print("Subtitles burned!")
+    srt_path = WORK_DIR + "/subs.srt"
+    if os.path.exists(srt_path) and os.path.getsize(srt_path) > 0:
+        cmd2 = [
+            "ffmpeg", "-y",
+            "-i", "temp_video.mp4",
+            "-vf", "subtitles=subs.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFF00,OutlineColour=&H00000000,Bold=1,Outline=3,Alignment=2,MarginV=150'",
+            "-c:a", "copy",
+            "final_video.mp4"
+        ]
+        subprocess.run(cmd2, check=True)
+        print("Subtitles burned!")
+    else:
+        os.rename("temp_video.mp4", "final_video.mp4")
+        print("No subtitles, using base video!")
 
 def upload_to_youtube(youtube, title, description, tags):
     body = {
