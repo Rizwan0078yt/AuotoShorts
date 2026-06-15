@@ -144,4 +144,4 @@ def upload_to_youtube(youtube, title, description, tags):
         media_body=media
     )
     response = request.execute()
-    print(f"✅ Uploaded! Video ID:
+    print(f"Uploaded! Video ID: {response['id']}")
