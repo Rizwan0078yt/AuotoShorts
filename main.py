@@ -11,6 +11,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+print("Script started!")
+print("GROQ key exists: " + str(bool(GROQ_API_KEY)))
 client = Groq(api_key=GROQ_API_KEY)
 
 WORK_DIR = "/home/runner/work/AuotoShorts/AuotoShorts"
@@ -21,13 +23,13 @@ VIDEO_URLS = [
 ]
 
 def get_youtube_client():
-    creds = pickle.load(open(f"{WORK_DIR}/token.pickle", "rb"))
+    creds = pickle.load(open(WORK_DIR + "/token.pickle", "rb"))
     return build("youtube", "v3", credentials=creds)
 
 def download_video(output="gameplay.mp4"):
     url = random.choice(VIDEO_URLS)
     response = requests.get(url, stream=True)
-    with open(f"{WORK_DIR}/{output}", "wb") as f:
+    with open(WORK_DIR + "/" + output, "wb") as f:
         for chunk in response.iter_content(chunk_size=32768):
             if chunk:
                 f.write(chunk)
@@ -48,18 +50,7 @@ def generate_script(topic):
         model="llama-3.3-70b-versatile",
         messages=[{
             "role": "user",
-            "content": f"""Write a 55-second YouTube Shorts script about: {topic}
-
-Rules:
-- Start with a shocking hook
-- Keep sentences short
-- End with a cliffhanger
-- Also give me a title, description and 10 tags
-
-Format as JSON:
-{{"script": "...", "title": "...", "description": "...", "tags": ["tag1","tag2"]}}
-
-Return ONLY the JSON, nothing else."""
+            "content": "Write a 55-second YouTube Shorts script about: " + topic + "\n\nRules:\n- Start with a shocking hook\n- Keep sentences short\n- End with a cliffhanger\n- Also give me a title, description and 10 tags\n\nFormat as JSON:\n{\"script\": \"...\", \"title\": \"...\", \"description\": \"...\", \"tags\": [\"tag1\",\"tag2\"]}\n\nReturn ONLY the JSON, nothing else."
         }]
     )
     text = response.choices[0].message.content
@@ -70,7 +61,7 @@ def format_time(seconds):
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
     ms = int((seconds % 1) * 1000)
-    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+    return str(h).zfill(2) + ":" + str(m).zfill(2) + ":" + str(s).zfill(2) + "," + str(ms).zfill(3)
 
 async def create_voice_and_subs(script):
     voice = "en-US-AriaNeural"
@@ -82,18 +73,19 @@ async def create_voice_and_subs(script):
             dur = chunk["duration"] / 10000000
             end = start + dur
             words.append((start, end, chunk["text"]))
-    srt_path = f"{WORK_DIR}/subs.srt"
+    srt_path = WORK_DIR + "/subs.srt"
     with open(srt_path, "w", encoding="utf-8") as f:
         for i, (start, end, word) in enumerate(words, 1):
-            f.write(f"{i}\n{format_time(start)} --> {format_time(end)}\n{word}\n\n")
-    print(f"SRT created with {len(words)} words!")
+            f.write(str(i) + "\n")
+            f.write(format_time(start) + " --> " + format_time(end) + "\n")
+            f.write(word + "\n\n")
+    print("SRT created with " + str(len(words)) + " words!")
     communicate2 = edge_tts.Communicate(script, voice)
-    await communicate2.save(f"{WORK_DIR}/voice.mp3")
+    await communicate2.save(WORK_DIR + "/voice.mp3")
     print("Voice saved!")
 
 def build_video():
     os.chdir(WORK_DIR)
-
     cmd1 = [
         "ffmpeg", "-y",
         "-stream_loop", "-1",
@@ -110,7 +102,6 @@ def build_video():
     ]
     subprocess.run(cmd1, check=True)
     print("Base video built!")
-
     cmd2 = [
         "ffmpeg", "-y",
         "-i", "temp_video.mp4",
@@ -134,7 +125,7 @@ def upload_to_youtube(youtube, title, description, tags):
         }
     }
     media = MediaFileUpload(
-        f"{WORK_DIR}/final_video.mp4",
+        WORK_DIR + "/final_video.mp4",
         chunksize=-1,
         resumable=True
     )
@@ -144,4 +135,30 @@ def upload_to_youtube(youtube, title, description, tags):
         media_body=media
     )
     response = request.execute()
-    print(f"Uploaded! Video ID: {response['id']}")
+    print("Uploaded! Video ID: " + response["id"])
+    return response["id"]
+
+def main():
+    print("Getting trending topic...")
+    topic = get_trending_topic()
+    print("Topic: " + topic)
+    print("Generating script...")
+    data = generate_script(topic)
+    print("Title: " + data["title"])
+    print("Creating voiceover and subtitles...")
+    asyncio.run(create_voice_and_subs(data["script"]))
+    print("Downloading gameplay...")
+    download_video()
+    print("Building video...")
+    build_video()
+    print("Uploading to YouTube...")
+    youtube = get_youtube_client()
+    video_id = upload_to_youtube(
+        youtube,
+        data["title"],
+        data["description"],
+        data["tags"]
+    )
+    print("Live at: https://youtube.com/shorts/" + video_id)
+
+main()
