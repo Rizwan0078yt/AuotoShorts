@@ -12,7 +12,6 @@ from googleapiclient.http import MediaFileUpload
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 print("Script started!")
-print("GROQ key exists: " + str(bool(GROQ_API_KEY)))
 client = Groq(api_key=GROQ_API_KEY)
 
 WORK_DIR = "/home/runner/work/AuotoShorts/AuotoShorts"
@@ -63,24 +62,44 @@ def format_time(seconds):
     ms = int((seconds % 1) * 1000)
     return str(h).zfill(2) + ":" + str(m).zfill(2) + ":" + str(s).zfill(2) + "," + str(ms).zfill(3)
 
-def make_srt_from_script(script):
-    words = script.split()
-    srt_path = WORK_DIR + "/subs.srt"
-    duration_per_word = 0.4
-    with open(srt_path, "w", encoding="utf-8") as f:
-        for i, word in enumerate(words):
-            start = i * duration_per_word
-            end = start + duration_per_word
-            f.write(str(i + 1) + "\n")
-            f.write(format_time(start) + " --> " + format_time(end) + "\n")
-            f.write(word + "\n\n")
-    print("SRT created with " + str(len(words)) + " words!")
-
-async def create_voice(script):
+async def create_voice_and_subs(script):
     voice = "en-US-AriaNeural"
     communicate = edge_tts.Communicate(script, voice)
-    await communicate.save(WORK_DIR + "/voice.mp3")
+    words = []
+    audio_chunks = []
+    async for chunk in communicate.stream():
+        if chunk["type"] == "WordBoundary":
+            start = chunk["offset"] / 10000000
+            dur = chunk["duration"] / 10000000
+            end = start + dur
+            words.append((start, end, chunk["text"]))
+        elif chunk["type"] == "audio":
+            audio_chunks.append(chunk["data"])
+    print("Got " + str(len(words)) + " word timings and " + str(len(audio_chunks)) + " audio chunks")
+    audio_path = WORK_DIR + "/voice.mp3"
+    with open(audio_path, "wb") as f:
+        for chunk in audio_chunks:
+            f.write(chunk)
     print("Voice saved!")
+    srt_path = WORK_DIR + "/subs.srt"
+    if len(words) > 0:
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for i, (start, end, word) in enumerate(words, 1):
+                f.write(str(i) + "\n")
+                f.write(format_time(start) + " --> " + format_time(end) + "\n")
+                f.write(word + "\n\n")
+        print("SRT created with timings!")
+    else:
+        words_list = script.split()
+        duration_per_word = 0.4
+        with open(srt_path, "w", encoding="utf-8") as f:
+            for i, word in enumerate(words_list):
+                start = i * duration_per_word
+                end = start + duration_per_word
+                f.write(str(i + 1) + "\n")
+                f.write(format_time(start) + " --> " + format_time(end) + "\n")
+                f.write(word + "\n\n")
+        print("SRT created from script words!")
 
 def build_video():
     os.chdir(WORK_DIR)
@@ -148,10 +167,8 @@ def main():
     print("Generating script...")
     data = generate_script(topic)
     print("Title: " + data["title"])
-    print("Creating subtitles from script...")
-    make_srt_from_script(data["script"])
-    print("Creating voiceover...")
-    asyncio.run(create_voice(data["script"]))
+    print("Creating voice and subtitles...")
+    asyncio.run(create_voice_and_subs(data["script"]))
     print("Downloading gameplay...")
     download_video()
     print("Building video...")
