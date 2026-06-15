@@ -63,25 +63,23 @@ def format_time(seconds):
     ms = int((seconds % 1) * 1000)
     return str(h).zfill(2) + ":" + str(m).zfill(2) + ":" + str(s).zfill(2) + "," + str(ms).zfill(3)
 
-async def create_voice_and_subs(script):
-    voice = "en-US-AriaNeural"
-    communicate = edge_tts.Communicate(script, voice)
-    words = []
-    async for chunk in communicate.stream():
-        if chunk["type"] == "WordBoundary":
-            start = chunk["offset"] / 10000000
-            dur = chunk["duration"] / 10000000
-            end = start + dur
-            words.append((start, end, chunk["text"]))
+def make_srt_from_script(script):
+    words = script.split()
     srt_path = WORK_DIR + "/subs.srt"
+    duration_per_word = 0.4
     with open(srt_path, "w", encoding="utf-8") as f:
-        for i, (start, end, word) in enumerate(words, 1):
-            f.write(str(i) + "\n")
+        for i, word in enumerate(words):
+            start = i * duration_per_word
+            end = start + duration_per_word
+            f.write(str(i + 1) + "\n")
             f.write(format_time(start) + " --> " + format_time(end) + "\n")
             f.write(word + "\n\n")
     print("SRT created with " + str(len(words)) + " words!")
-    communicate2 = edge_tts.Communicate(script, voice)
-    await communicate2.save(WORK_DIR + "/voice.mp3")
+
+async def create_voice(script):
+    voice = "en-US-AriaNeural"
+    communicate = edge_tts.Communicate(script, voice)
+    await communicate.save(WORK_DIR + "/voice.mp3")
     print("Voice saved!")
 
 def build_video():
@@ -115,7 +113,7 @@ def build_video():
         print("Subtitles burned!")
     else:
         os.rename("temp_video.mp4", "final_video.mp4")
-        print("No subtitles, using base video!")
+        print("No subtitles!")
 
 def upload_to_youtube(youtube, title, description, tags):
     body = {
@@ -150,8 +148,10 @@ def main():
     print("Generating script...")
     data = generate_script(topic)
     print("Title: " + data["title"])
-    print("Creating voiceover and subtitles...")
-    asyncio.run(create_voice_and_subs(data["script"]))
+    print("Creating subtitles from script...")
+    make_srt_from_script(data["script"])
+    print("Creating voiceover...")
+    asyncio.run(create_voice(data["script"]))
     print("Downloading gameplay...")
     download_video()
     print("Building video...")
