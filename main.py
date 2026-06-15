@@ -9,6 +9,7 @@ import edge_tts
 from groq import Groq
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from pytrends.request import TrendReq
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 print("Script started!")
@@ -21,35 +22,45 @@ VIDEO_URLS = [
     "https://www.dropbox.com/scl/fi/438139ar9rjxnxi5by0z0/Wreckfest-2-Gameplay-Free-To-Use_720p-1.mp4?rlkey=igu67c3bmc94j4hlgatkg27ox&st=1nep6py6&dl=1",
 ]
 
-def get_youtube_client():
-    creds = pickle.load(open(WORK_DIR + "/token.pickle", "rb"))
-    return build("youtube", "v3", credentials=creds)
+LANGUAGES = [
+    {"name": "English", "code": "en-US", "voice": "en-US-AriaNeural", "geo": "US"},
+    {"name": "Spanish", "code": "es-ES", "voice": "es-ES-ElviraNeural", "geo": "ES"},
+    {"name": "Hindi", "code": "hi-IN", "voice": "hi-IN-SwaraNeural", "geo": "IN"},
+    {"name": "Arabic", "code": "ar-SA", "voice": "ar-SA-ZariyahNeural", "geo": "SA"},
+    {"name": "French", "code": "fr-FR", "voice": "fr-FR-DeniseNeural", "geo": "FR"},
+    {"name": "Portuguese", "code": "pt-BR", "voice": "pt-BR-FranciscaNeural", "geo": "BR"},
+    {"name": "Indonesian", "code": "id-ID", "voice": "id-ID-GadisNeural", "geo": "ID"},
+]
 
-def download_video(output="gameplay.mp4"):
-    url = random.choice(VIDEO_URLS)
-    response = requests.get(url, stream=True)
-    with open(WORK_DIR + "/" + output, "wb") as f:
-        for chunk in response.iter_content(chunk_size=32768):
-            if chunk:
-                f.write(chunk)
-    print("Video downloaded!")
-
-def get_trending_topic():
-    topics = [
-        "a mysterious disappearance that shocked the world",
-        "the scariest animal encounter ever recorded",
-        "a secret government experiment gone wrong",
-        "the most bizarre unsolved mystery in history",
-        "a survival story that seems impossible",
+def get_trending_topic(geo="US"):
+    try:
+        pytrends = TrendReq(hl="en-US", tz=360)
+        trending = pytrends.trending_searches(pn="united_states")
+        topics = trending[0].tolist()
+        if topics:
+            topic = random.choice(topics[:10])
+            print("Trending topic found: " + topic)
+            return topic
+    except Exception as e:
+        print("Trends failed: " + str(e))
+    fallback = [
+        "mysterious discovery that shocked scientists",
+        "incredible animal behavior caught on camera",
+        "mind blowing space discovery NASA announced",
+        "dangerous food most people eat every day",
+        "unbelievable world record just broken",
+        "secret ancient civilization just discovered",
+        "surprising health fact doctors dont tell you",
+        "insane natural phenomenon caught on video",
     ]
-    return random.choice(topics)
+    return random.choice(fallback)
 
-def generate_script(topic):
+def generate_script(topic, language):
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{
             "role": "user",
-            "content": "Write a 55-second YouTube Shorts script about: " + topic + "\n\nRules:\n- Start with a shocking hook\n- Keep sentences short\n- End with a cliffhanger\n- Also give me a title, description and 10 tags\n\nFormat as JSON:\n{\"script\": \"...\", \"title\": \"...\", \"description\": \"...\", \"tags\": [\"tag1\",\"tag2\"]}\n\nReturn ONLY the JSON, nothing else."
+            "content": "Write a fun and informative 55-second YouTube Shorts script in " + language["name"] + " language about: " + topic + "\n\nRules:\n- Start with a shocking fun fact or question\n- Share 3-4 amazing facts\n- Keep it fun and energetic\n- End with a mind-blowing conclusion\n- Write ENTIRELY in " + language["name"] + "\n- Also give title, description and 10 tags in " + language["name"] + "\n\nFormat as JSON:\n{\"script\": \"...\", \"title\": \"...\", \"description\": \"...\", \"tags\": [\"tag1\",\"tag2\"]}\n\nReturn ONLY the JSON, nothing else."
         }]
     )
     text = response.choices[0].message.content
@@ -62,8 +73,7 @@ def format_time(seconds):
     ms = int((seconds % 1) * 1000)
     return str(h).zfill(2) + ":" + str(m).zfill(2) + ":" + str(s).zfill(2) + "," + str(ms).zfill(3)
 
-async def create_voice_and_subs(script):
-    voice = "en-US-AriaNeural"
+async def create_voice_and_subs(script, voice):
     communicate = edge_tts.Communicate(script, voice)
     words = []
     audio_chunks = []
@@ -75,7 +85,6 @@ async def create_voice_and_subs(script):
             words.append((start, end, chunk["text"]))
         elif chunk["type"] == "audio":
             audio_chunks.append(chunk["data"])
-    print("Got " + str(len(words)) + " word timings and " + str(len(audio_chunks)) + " audio chunks")
     audio_path = WORK_DIR + "/voice.mp3"
     with open(audio_path, "wb") as f:
         for chunk in audio_chunks:
@@ -88,7 +97,7 @@ async def create_voice_and_subs(script):
                 f.write(str(i) + "\n")
                 f.write(format_time(start) + " --> " + format_time(end) + "\n")
                 f.write(word + "\n\n")
-        print("SRT created with timings!")
+        print("SRT created with " + str(len(words)) + " words!")
     else:
         words_list = script.split()
         duration_per_word = 0.4
@@ -100,6 +109,15 @@ async def create_voice_and_subs(script):
                 f.write(format_time(start) + " --> " + format_time(end) + "\n")
                 f.write(word + "\n\n")
         print("SRT created from script words!")
+
+def download_video(output="gameplay.mp4"):
+    url = random.choice(VIDEO_URLS)
+    response = requests.get(url, stream=True)
+    with open(WORK_DIR + "/" + output, "wb") as f:
+        for chunk in response.iter_content(chunk_size=32768):
+            if chunk:
+                f.write(chunk)
+    print("Video downloaded!")
 
 def build_video():
     os.chdir(WORK_DIR)
@@ -139,7 +157,7 @@ def upload_to_youtube(youtube, title, description, tags):
         "snippet": {
             "title": title,
             "description": description + "\n\n#Shorts",
-            "tags": tags + ["Shorts", "viral"],
+            "tags": tags + ["Shorts", "viral", "facts"],
             "categoryId": "24"
         },
         "status": {
@@ -160,15 +178,21 @@ def upload_to_youtube(youtube, title, description, tags):
     print("Uploaded! Video ID: " + response["id"])
     return response["id"]
 
+def get_youtube_client():
+    creds = pickle.load(open(WORK_DIR + "/token.pickle", "rb"))
+    return build("youtube", "v3", credentials=creds)
+
 def main():
+    language = random.choice(LANGUAGES)
+    print("Language selected: " + language["name"])
     print("Getting trending topic...")
-    topic = get_trending_topic()
+    topic = get_trending_topic(language["geo"])
     print("Topic: " + topic)
     print("Generating script...")
-    data = generate_script(topic)
+    data = generate_script(topic, language)
     print("Title: " + data["title"])
     print("Creating voice and subtitles...")
-    asyncio.run(create_voice_and_subs(data["script"]))
+    asyncio.run(create_voice_and_subs(data["script"], language["voice"]))
     print("Downloading gameplay...")
     download_video()
     print("Building video...")
